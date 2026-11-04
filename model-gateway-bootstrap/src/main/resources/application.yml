@@ -1,0 +1,122 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: model-gateway
+  main:
+    web-application-type: reactive
+  codec:
+    max-in-memory-size: 16MB
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+
+model-gateway:
+  api-keys:
+    - key: mg-demo-key
+      tenant: demo
+      user-id: user-001
+      allowed-models:
+        - deep-seek-4.1-flash
+        - deep-seek-4.1-pro
+      rate-limit-qps: 100
+      enabled: true
+
+  routes:
+    - model: deep-seek-4.1-flash
+      strategy: composite
+      endpoints:
+        - id: deepseek-flash-baseline
+          base-url: https://api.deepseek.com
+          version: v1
+          weight: 90
+          tags:
+            region: cn
+        - id: deepseek-flash-canary
+          base-url: https://api.deepseek.com
+          version: v2
+          weight: 10
+          canary: true
+          stains:
+            - experiment-a
+          tags:
+            region: cn
+
+    - model: deep-seek-4.1-pro
+      strategy: composite
+      endpoints:
+        - id: deepseek-pro-baseline
+          base-url: https://api.deepseek.com
+          version: v1
+          weight: 100
+
+  canary-rules:
+    - rule-id: deepseek-flash-v2-canary
+      model: deep-seek-4.1-flash
+      percentage: 10
+      target-version: v2
+      header-match:
+        X-Canary: "true"
+      user-whitelist:
+        - user-001
+
+  stain-rules:
+    - rule-id: experiment-a
+      stain-key: experiment-a
+      model: deep-seek-4.1-flash
+      sampling-rate: 5
+      header-match:
+        X-Stain: "experiment-a"
+      force-route: true
+      target-endpoint-ids:
+        - deepseek-flash-canary
+
+  forward:
+    connect-timeout: 5s
+    read-timeout: 60s
+    write-timeout: 60s
+    max-response-size: 16777216
+    retry-count: 1
+
+  cors:
+    allowed-origins:
+      - "*"
+    allowed-methods:
+      - "*"
+    allowed-headers:
+      - "*"
+    allow-credentials: false
+    max-age: 3600
+
+  rate-limit:
+    enabled: true
+    default-qps: 100
+    limit-for-period: 100
+    limit-refresh-period: 1s
+    timeout-duration: 0s
+    subscribe-for-events: false
+
+  websocket:
+    heartbeat-enabled: true
+    heartbeat-interval: 30s
+    idle-timeout: 120s
+    backend-heartbeat-enabled: true
+
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] [%X{trace_id}] [%X{request_id}] %-5level %logger{36} - %msg%n"
+  level:
+    com.github.soyoger.modelgateway: INFO
